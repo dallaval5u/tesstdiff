@@ -1,0 +1,11 @@
+unit FileDifGlb;
+
+interface
+var
+  x,dx: double;
+  Genei, GenEf: double;
+  ni,nf,shiftLeft, ShiftRight: integer;
+  SpectrumLoaded: Boolean;
+implementation
+
+end.

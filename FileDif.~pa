@@ -1,0 +1,312 @@
+unit FileDif;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+  Menus, StdCtrls, ExtCtrls,FileDifGlb,FileDifFiles;
+
+type
+  TForm1 = class(TForm)
+    OpenFileABt: TButton;
+    FileAEdt: TEdit;
+    OpenFileBBt: TButton;
+    FileBEdt: TEdit;
+    Panel1: TPanel;
+    Label1: TLabel;
+    XEdt: TEdit;
+    Label2: TLabel;
+    DXEdt: TEdit;
+    XPlusDXBt: TButton;
+    XMinDXBt: TButton;
+    ShiftLeftBt: TButton;
+    ShiftRightBt: TButton;
+    Panel2: TPanel;
+    BeBt: TRadioButton;
+    KeBt: TRadioButton;
+    Label3: TLabel;
+    EiEdt: TEdit;
+    Label4: TLabel;
+    EfEdt: TEdit;
+    SaveFileBt: TButton;
+    SaveWinBt: TButton;
+    MainMenu1: TMainMenu;
+    Exit1: TMenuItem;
+    OpenDialog1: TOpenDialog;
+    Panel3: TPanel;
+    Channel: TEdit;
+    EKin: TEdit;
+    EBind: TEdit;
+    MouseY: TEdit;
+    Counts: TEdit;
+    Intensity: TEdit;
+    Edit2: TEdit;
+    Edit3: TEdit;
+    Edit4: TEdit;
+    Edit5: TEdit;
+    Edit6: TEdit;
+    Edit7: TEdit;
+    ShiftEdt: TEdit;
+    SaveDialog1: TSaveDialog;
+    ApplyBt: TButton;
+    FixBt: TCheckBox;
+    procedure Exit1Click(Sender: TObject);
+    procedure OpenFileABtClick(Sender: TObject);
+    procedure OpenFileBBtClick(Sender: TObject);
+    procedure XEdtExit(Sender: TObject);
+    procedure DXEdtExit(Sender: TObject);
+    procedure XPlusDXBtClick(Sender: TObject);
+    procedure XMinDXBtClick(Sender: TObject);
+    procedure ShiftLeftBtClick(Sender: TObject);
+    procedure ShiftRightBtClick(Sender: TObject);
+    procedure SaveFileBtClick(Sender: TObject);
+    procedure EiEdtExit(Sender: TObject);
+    procedure EfEdtChange(Sender: TObject);
+    procedure ApplyBtClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  FileDifWnd: TForm1;
+
+implementation
+
+uses graph;
+
+
+{$R *.DFM}
+
+{******************************************************************************************************}
+procedure TForm1.Exit1Click(Sender: TObject);
+begin
+  close;
+end;
+{******************************************************************************************************}
+procedure TForm1.OpenFileABtClick(Sender: TObject);
+var
+  LocalSpectrum: TSpectrum;
+  i: integer;
+  Send: TObject;
+  AncientFormat: Boolean;
+  s: string;
+  begin
+  AncientFormat:=false;
+  LocalSpectrum :=TSpectrum.Create;
+  if OpenDialog1.Execute
+  then begin
+    LocalSpectrum.Name:=OpenDialog1.FileName;
+    LocalSpectrum.load;
+    if LocalSpectrum.io_error=1 then begin
+      Application.MessageBox ('File not found','File Input Error',mb_OK or MB_IconStop);
+    end;
+    if LocalSpectrum.io_error=2 then begin
+      LocalSpectrum.load_AncientY;
+      if LocalSpectrum.io_error=2 then begin
+        Application.MessageBox ('Wrong file format','File Input Error',mb_OK or MB_IconExclamation);
+      end;
+      AncientFormat:=true;
+    end;
+  end;
+  if LocalSpectrum.loaded then begin
+    SpectrumLoaded:=true;
+    LocalSpectrum.copy (@File_A);
+    FileAEdt.Text:=File_A.Name;
+    LocalSpectrum.copy (@spectrum);
+  end;
+  LocalSpectrum.Free;
+  with grafik do begin
+    imin:=1;
+    imax:=spectrum.npts;
+    yimin:=spectrum.ymin;
+    yimax:=spectrum.ymax;
+    plot;
+  end;
+  if not fixbt.checked then with spectrum do begin
+    genei:=ei;
+    genef:=ef;
+    if excit<>0 then begin
+      bebt.checked :=true;
+      str (excit-ei:3:3,s);eiedt.text:=s;
+      str (excit-ef:3:3,s);efedt.text:=s;
+    end else
+    begin
+      kebt.checked :=true;
+      str (excit-ei:3:3,s);eiedt.text:=s;
+      str (excit-ef:3:3,s);efedt.text:=s;
+    end;
+  end;
+  end;
+{******************************************************************************************************}
+
+procedure TForm1.OpenFileBBtClick(Sender: TObject);
+var
+  LocalSpectrum: TSpectrum;
+  i: integer;
+  Send: TObject;
+  AncientFormat: Boolean;
+  begin
+  AncientFormat:=false;
+  LocalSpectrum :=TSpectrum.Create;
+  if OpenDialog1.Execute
+  then begin
+    LocalSpectrum.Name:=OpenDialog1.FileName;
+    LocalSpectrum.load;
+    if LocalSpectrum.io_error=1 then begin
+      Application.MessageBox ('File not found','File Input Error',mb_OK or MB_IconStop);
+    end;
+    if LocalSpectrum.io_error=2 then begin
+      LocalSpectrum.load_AncientY;
+      if LocalSpectrum.io_error=2 then begin
+        Application.MessageBox ('Wrong file format','File Input Error',mb_OK or MB_IconExclamation);
+      end;
+      AncientFormat:=true;
+    end;
+  end;
+  if LocalSpectrum.loaded then begin
+    SpectrumLoaded:=true;
+    LocalSpectrum.copy (@File_B);
+    FileBEdt.Text:=File_B.Name;
+    with File_b do begin
+      for i:=1 to npts do file_b_y[i]:=y[i];
+      for i:=-200 to 0 do file_b_y[i]:=y[1];
+      for i:=npts to npts+200 do file_b_y[i]:=y[npts];
+    end;
+  end;
+  LocalSpectrum.Free;
+end;
+{******************************************************************************************************}
+procedure TForm1.XEdtExit(Sender: TObject);
+var
+  c: integer;
+begin
+  val (XEdt.Text,X,C);
+  if C<>0 then XEdt.Text:='xxxxxx';
+end;
+
+procedure TForm1.DXEdtExit(Sender: TObject);
+var
+  c: integer;
+begin
+  val (DXEdt.Text,DX,C);
+  if C<>0 then DXEdt.Text:='xxxxxx';
+
+end;
+
+{******************************************************************************************************}
+procedure TForm1.XPlusDXBtClick(Sender: TObject);
+var
+  i: integer;
+  s: string;
+begin
+  val (Xedt.text,x,i);
+  val (DXedt.text,dx,i);
+  x:=x+dx;
+  str (x:0:3,s);
+  XEdt.Text:=s;
+  for i:=1 to spectrum.npts do spectrum.y[i]:=file_a.y[i]-x*file_b_y[i-shift];
+  grafik.replot;
+end;
+{******************************************************************************************************}
+procedure TForm1.XMinDXBtClick(Sender: TObject);
+var
+  i: integer;
+  s: string;
+begin
+  val (Xedt.text,x,i);
+  val (DXedt.text,dx,i);
+  x:=x-dx;
+  str (x:0:3,s);
+  XEdt.Text:=s;
+  for i:=1 to spectrum.npts do spectrum.y[i]:=file_a.y[i]-x*file_b_y[i-shift];
+  grafik.replot;
+end;
+{******************************************************************************************************}
+procedure TForm1.ShiftLeftBtClick(Sender: TObject);
+var
+  s: string;
+  i: integer;
+begin
+  dec (shift);
+  str (shift:0,s);
+  ShiftEdt.Text:=s;
+  for i:=1 to spectrum.npts do spectrum.y[i]:=file_a.y[i]-x*file_b_y[i-shift];
+  grafik.replot;
+end;
+
+{******************************************************************************************************}
+procedure TForm1.ShiftRightBtClick(Sender: TObject);
+var
+  s: string;
+  i: integer;
+begin
+  inc (shift);
+  str (shift:0,s);
+  ShiftEdt.Text:=s;
+  for i:=1 to spectrum.npts do spectrum.y[i]:=file_a.y[i]-x*file_b_y[i-shift];
+  grafik.replot;
+end;
+{******************************************************************************************************}
+{******************************************************************************************************}
+{******************************************************************************************************}
+{******************************************************************************************************}
+
+procedure TForm1.SaveFileBtClick(Sender: TObject);
+var
+  filename: string;
+  f: file;
+  io: boolean;
+begin
+  begin
+    filename:=Spectrum.name;
+    SaveDialog1.filename:=filename;
+    if SaveDialog1.Execute
+    then begin
+      filename:=SaveDialog1.fileName;
+      io:=FileExists (FileName);
+      if io=true then begin
+        if Application.MessageBox ('File exists already .. Overwrite it?','File Save As',mb_OKCancel or mb_IconExclamation)
+        =id_ok then io:=false;
+      end;
+      if io=false then begin
+        Spectrum.Name:=filename;
+        if not Spectrum.store then
+        Application.MessageBox ('Invalid Filename','File write error',mb_OK or mb_IconExclamation);
+      end;
+    end;
+  end;
+end;
+
+procedure TForm1.EiEdtExit(Sender: TObject);
+var
+  i: integer;
+  e: double;
+begin
+  val (eiedt.text,e,i);
+  if i<>0 then eiedt.text:='xxxxxx' else genei:=e;
+  if BEBt.checked then genei:=spectrum.excit-e else genei:=e;
+end;
+
+procedure TForm1.EfEdtChange(Sender: TObject);
+var
+  i: integer;
+  e: double;
+begin
+  val (efedt.text,e,i);
+  if i<>0 then efedt.text:='xxxxxx' else genef:=e;
+  if BEBt.checked then genef:=spectrum.excit-e else genef:=e;
+end;
+
+procedure TForm1.ApplyBtClick(Sender: TObject);
+var
+  locei,locef: double;
+begin
+  if (eiedt.text='xxxxxx') or (efedt.text='xxxxxx') then exit;
+  grafik.imin:=trunc(1+(locei-spectrum.ei)/(spectrum.ef-spectrum.ei)*(spectrum.npts-1));
+  grafik.imax:=trunc(1+(locef-spectrum.ei)/(spectrum.ef-spectrum.ei)*(spectrum.npts-1));
+  grafik.replot;
+end;
+
+end.

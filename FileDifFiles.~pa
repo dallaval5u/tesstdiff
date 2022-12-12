@@ -1,0 +1,554 @@
+unit FileDifFiles;
+interface
+uses
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+  Menus, Grids, Calendar, Gauges;
+type
+  TGraphCoordinates = record                   {For Zoom Applications}
+    x1,x2,y1,y2: single;
+    ix1,ix2,iy1,iy2: integer;
+    n1,n2: integer;
+  end;
+
+  Analysis = (PE,AES,EELS);
+  spectr_txt_type= string[80];
+  Tspectr_name= String [80];
+
+  PSpectrum = ^TSpectrum;
+  TSpectrum = class (TObject)
+  public
+  DateTime:TDateTime;
+  name: Tspectr_Name;         {Name of the File}
+  npts: integer;              {Number of DataPoints}
+  y:array[1..2000] of single;
+  spe_type: analysis;         {Indicates type of Analsis
+                                PE:   Photoelectron
+                                AES:  Auger
+                                EELS: Electron Energy Loss}
+  AnaType,                    {Type of Analyser
+                                0: DPCMA Livermore
+                                1: CPA Livermore
+                                2: CPA Karlsruhe EA10}
+  Excit,                      {Generally: Excitation Energy}
+  EPass,                      {Pass Energy of Analyser (eV)
+                               0 : Auger Mode: No retardation}
+  ei,                         {Initial Kinetic Energy}
+  ef,                         {Final Kinetic Energy}
+  wf,                         {Work Function}
+  ScanTime,                  {Scan Time (sec)}
+
+  bei,                        {Initial Binding Energy}
+  bef,                        {Final Binding Energy}
+  dei,                        {Initial Energy Loss}
+  def,                        {Final Energy Loss}
+  hv,                         {Excitation Radiation XPS/UPS}
+  EPrim,                      {Energy of the Exciting Electrons AES/EELS}
+
+  chamberpressure,            {Chamber Pressure}
+  sampletemperature,          {Sample Temperature}
+  voltage,                         {Synchrotron Beam Current}
+  current,                       {Synchrotron Mesh Current}
+  StartEnergy,                {StartEnergy (Keithley Electrometer)}
+  ymin,ymax                   {Ymin and YMax}
+  : single;
+
+  adsorbate,                  {Description of adsorbate}
+  sample,                     {Description of sample}
+  co1,                        {Comment 1}
+  co2,                        {Comment 2}
+  co3                         {Comment 3}
+  :spectr_txt_type;
+  io_error: integer;          {1: file not found
+                               2: file type error
+                               3: other type of error   }
+  loaded: boolean;
+  GraphCoord: TGraphCoordinates;
+
+  constructor create;
+  procedure load;virtual;
+  procedure load_xy;virtual;
+  procedure load_AncientY;virtual;
+  function store:boolean;virtual;
+  function store_XY:boolean;virtual;
+  procedure copy (destination: PSpectrum);
+  destructor Destroy;virtual;
+  end;
+var
+  spectrum,File_A,File_B: TSpectrum;
+  skipLines: Integer;
+  FileModified: Boolean;
+implementation
+{************************************************************************}
+constructor TSpectrum.create;
+begin
+  spe_type:=aes;
+  anatype:=0;
+  excit:=0;
+  epass:=1;
+  ei:=0;
+  ef:=1;
+  scantime:=0;
+  bei:=1;
+  bef:=0;
+  startenergy:=0;
+  npts:=0;
+  loaded:=false;
+  ymin:=0;
+  ymax:=1;
+end;
+{************************************************************************}
+destructor TSpectrum.Destroy;
+begin
+  inherited Destroy;
+end;
+{************************************************************************}
+
+procedure TSpectrum.load;
+type
+  fs = file of single;
+var
+  f: fs;
+  fka: text;
+  i,io: integer;
+  tmp: single;
+  error: boolean;
+  ch: char;
+  st: string[15];
+  buf,lei,lde,levpc,ltime,lnpts: double;
+  st1: string;
+  st8: string[8];
+  index,lineindex: integer;
+  error1: integer;
+  ftime: longint;
+  c: char;
+  {-------------------------------------------------------------------}
+procedure read_si_str (var f1: fs; var st: spectr_txt_type);
+var
+  ps: ^single;
+  i,le: integer;
+
+begin
+  ps:=addr(st);
+  read (f1,ps^);
+  le:= length(st) div 4;
+  for i:=1 to le do begin
+    inc(ps);
+    read (f1,ps^);
+    end;
+  end;
+{***************************************************************************}
+procedure readparam;
+  begin
+    read (f,voltage);
+    read (f,current);
+    read (f,SampleTemperature);
+    read (f,ChamberPressure);
+    read_si_str (f,sample);
+    read_si_str (f,adsorbate);
+    read_si_str (f,co1);
+    read_si_str (f,co2);
+    read_si_str (f,co3);
+    if not eof(f) then read (f,StartEnergy) else StartEnergy:=-1;
+  end;
+{*****************************************************************************}
+
+
+
+begin
+  begin   {Input for SINGLE format!!!!!!!!}
+  io_error:=0;
+  assign (f,name);
+  {$I-}
+  reset (f);
+  {$I+}
+  io:=ioResult;
+  if io<>0 then begin
+    loaded:=false;
+    io_error:=1;
+    exit;
+  end;
+  read (f,tmp);
+  if (tmp>2) or (tmp<0) then
+  begin
+    loaded:=false;
+    io_error:=2;
+    close (f);
+    exit;
+  end;
+  case trunc(tmp) of
+    0: spe_type:=pe;
+    1: spe_type:=aes;
+    2: spe_type:=eels;
+    end;
+  if (tmp=0) or (tmp=1) or (tmp=2) then begin
+    read (f,tmp);
+    Excit:=tmp;
+    if (spe_type=pe) then hv:=Excit;
+    if (spe_type=aes) or (spe_type=eels) then eprim:=Excit;
+
+    read (f,AnaType,Epass,Ei,Ef,ScanTime,tmp);
+    npts:=trunc (tmp);
+    wf:=0;
+    for i:=1 to npts do read (f,y[i]);
+    if not eof(f) then
+    readparam else begin
+      current:=0;
+      voltage:=0;
+      SampleTemperature:=-300;
+      ChamberPressure:=0;
+      sample:='';
+      adsorbate:='';
+      co1:='';
+      co2:='';
+      co3:='';
+      StartEnergy:=-1;
+    end;
+    close (f);
+    ymin:=y[1];
+    ymax:=y[1];
+    for i:=1 to npts do begin
+      if ymin>y[i] then ymin:=y[i];
+      if ymax<y[i] then ymax:=y[i];
+    end;
+    if ymax=ymin then begin
+      ymax:=ymax+1;
+      ymin:=ymin-1;
+    end;
+    graphcoord.x1:=ei;
+    graphcoord.x2:=ef;
+    buf:=(ymax-ymin)/50;
+    graphcoord.y1:=ymax+buf;
+    graphcoord.y2:=ymin-buf;
+    graphcoord.n1:=1;
+    graphcoord.n2:=npts;
+    io_error:=0;
+    loaded:=true;
+    exit;
+  end else begin
+    close (f);
+    assign (fka,name);                          {Karlsruhe - Sciavo}
+    reset (fka);
+    read (fka,ch);
+    if ch=#32 then begin
+      reset (fka);
+      readln (fka,lei,lde,levpc,ltime,lnpts);
+      if abs(lde-levpc*lnpts)<1e-10 then begin
+        spe_type:=pe;
+        excit:=0;
+        anatype:=2;
+        epass:=1;
+        ei:=lei;
+        ef:=ei+lde;
+        wf:=0;
+        scantime:=ltime;
+        npts:=trunc(lnpts);
+        for i:=1 to npts do readln (fka,y[i]);
+        ymin:=y[1];
+        ymax:=y[1];
+        for i:=1 to npts do begin
+          if ymin>y[i] then ymin:=y[i];
+          if ymax<y[i] then ymax:=y[i];
+        end;
+        if ymax=ymin then begin
+          ymax:=ymax+1;
+          ymin:=ymin-1;
+        end;
+        graphcoord.x1:=ei;
+        graphcoord.x2:=ef;
+        buf:=(ymax-ymin)/50;
+        graphcoord.y1:=ymax+buf;
+        graphcoord.y2:=ymin-buf;
+        graphcoord.n1:=1;
+        graphcoord.n2:=npts;
+        current:=0;
+        voltage:=0;
+        SampleTemperature:=-300;
+        ChamberPressure:=0;
+        sample:='';
+        adsorbate:='';
+        co1:='';
+        co2:='';
+        co3:='';
+        StartEnergy:=-1;
+        close (fka);
+        io_error:=0;
+        loaded:=true;
+        exit;
+      end;
+    end;
+  end;
+  io_error:=2;
+  loaded:=false;
+  close (fka);
+end;
+end;
+{************************************************************************}
+
+procedure TSpectrum.load_xy;
+var
+  f: text;
+  i,io: integer;
+  xx: double;
+begin
+  assign (f,name);
+  {$I-}
+  reset (f);
+  {$I+}
+  io:=ioResult;
+  if io<>0 then begin
+    loaded:=false;
+    io_error:=1;
+    exit;
+  end;
+  for i:=1 to SkipLines do begin
+    readln (f);
+  end;
+  i:=0;
+  repeat
+  inc (i);
+  readln (f,xx,y[i]);
+  if i=1 then ei:=xx;
+  until eof (f);
+  close (f);
+  ef:=xx;
+  npts:=i;
+  epass:=1;
+  scantime:=1;
+  current:=0;
+  voltage:=0;
+  SampleTemperature:=-300;
+  ChamberPressure:=0;
+  sample:='';
+  adsorbate:='';
+  co1:='';
+  co2:='';
+  co3:='';
+  StartEnergy:=-1;
+  ymin:=y[1];
+  ymax:=y[1];
+  for i:=1 to npts do begin
+    if ymin>y[i] then ymin:=y[i];
+    if ymax<y[i] then ymax:=y[i];
+  end;
+  if ymax=ymin then begin
+    ymax:=ymax+1;
+    ymin:=ymin-1;
+  end;
+  io_error:=0;
+  loaded:=true;
+end;
+{************************************************************************}
+
+procedure TSpectrum.load_AncientY;
+var
+  fka: text;
+  error1,i,io,lineIndex,index: integer;
+  xx: double;
+  c: char;
+  st8: string[8];
+{******************************************************************}
+  function readnbr (var f:text;var error:integer):single;
+  var
+    st: string[8];
+    c: char;
+    x: single;
+  begin
+    st:='';
+    repeat
+      read (f,c);
+      if (c>='0') and (c<='9') then st:=st+c;
+    until (c='.') or (eof(f));
+    if eof(f) then exit;
+    val (st,x,error);
+    readnbr:=x;
+  end;
+{******************************************************************}
+
+begin
+    assign (fka,name);                          {Karlsruhe - Gouder}
+    reset (fka);
+    lineIndex:=0;
+    index:=0;
+//    read (fka,c); {compensate to 13 10}
+    if c='t' then
+       for i:=1 to 2 do begin
+       readln (fka);
+       end else reset (fka);
+    repeat
+      inc (lineIndex);
+      inc (index);
+      if not eof (fka) then y[index]:=readnbr (fka,error1);
+      if eof(fka) then dec (index);    {trying to read last point, eof was reached)}
+      if error1>0 then begin
+        io_error:=2;
+        close (fka);
+        exit;
+      end;
+      if lineIndex=16 then begin
+        readln (fka);
+//    read (fka,c); {compensate to 13 10}
+        LineIndex:=0;
+      end;
+    until eof (fka) or (index>2000);
+    if index>2000 then begin
+      io_error:=2;
+      loaded:=false;
+      close (fka);
+      exit;
+    end;
+  close (fka);
+  ef:=xx;
+  npts:=index;
+  epass:=1;
+  scantime:=1;
+  current:=0;
+  voltage:=0;
+  SampleTemperature:=-300;
+  ChamberPressure:=0;
+  sample:='';
+  adsorbate:='';
+  co1:='';
+  co2:='';
+  co3:='';
+  spe_type:=pe;
+  StartEnergy:=-1;
+  ymin:=y[1];
+  ymax:=y[1];
+  for i:=1 to npts do begin
+    if ymin>y[i] then ymin:=y[i];
+    if ymax<y[i] then ymax:=y[i];
+  end;
+  if ymax=ymin then begin
+    ymax:=ymax+1;
+    ymin:=ymin-1;
+  end;
+  io_error:=0;
+  loaded:=true;
+end;
+{************************************************************************}
+function TSpectrum.store;
+var
+  f:file of single;
+  i: integer;
+  tmp: single;
+  buf: boolean;
+  {-------------------------------------------------------------------}
+procedure save_si_str (st: spectr_txt_type);
+var
+  ps: ^single;
+  i,le: integer;
+begin
+  ps:=addr(st);
+  le:= length(st) div 4;
+  for i:=0 to le do
+  begin
+    write (f,ps^);
+    inc(ps);
+  end;
+end;
+  {-------------------------------------------------------------------}
+begin
+  assign (f,name);
+  {$I-}
+  rewrite(f);
+  {$I+}
+  if ioresult<>0 then begin
+    store:=false;
+    exit;
+  end;
+  case spe_type of
+    pe   : tmp:=0;
+    aes  : tmp:=1;
+    eels : tmp:=2;
+    end;
+
+  write (f,tmp);
+  write (f,excit);
+  tmp:=npts;
+  write (f,AnaType,Epass,Ei,Ef,ScanTime,tmp);
+  for i:=1 to npts do write (f,y[i]);
+  write (f,voltage,current,SampleTemperature,ChamberPressure);
+  save_si_str (sample);
+  save_si_str (adsorbate);
+  save_si_str (co1);
+  save_si_str (co2);
+  save_si_str (co3);
+  write (f,StartEnergy);
+  close (f);
+  FileModified:=false;
+  store:=true;
+  end;
+{************************************************************************}
+function TSpectrum.store_XY;
+var
+  f:text;
+  i: integer;
+  locei,locef: single;
+begin
+  assign (f,name);
+  {$I-}
+  rewrite(f);
+  {$I+}
+  if ioresult<>0 then begin
+    store_XY:=false;
+    exit;
+  end;
+  case spe_type of
+    pe   : begin
+             locei:=excit-ei;
+             locef:=excit-ef;
+           end;
+    aes  : begin
+             locei:=ei;
+             locef:=ef;
+           end;
+
+    end;
+  for i:=1 to npts do writeln (f,locei+(locef-locei)/(npts-1)*(i-1):3:5,#9,y[i]:3:5);
+  close (f);
+    store_XY:=true;
+  end;
+{**************************************************************************}
+procedure TSpectrum.copy;
+begin
+  destination^.name:=name;
+  destination^.DateTime:=DateTime;
+  destination^.npts:=npts;
+  destination^.y:=y;
+  destination^.spe_type:=spe_type;
+  destination^.AnaType:=AnaType;
+  destination^.Excit:=Excit;
+  destination^.EPass:=Epass;
+  destination^.ei:=ei;
+  destination^.ef:=ef;
+  destination^.wf:=wf;
+  destination^.ScanTime:=ScanTime;
+  destination^.bei:=bei;
+  destination^.bef:=bef;
+  destination^.dei:=dei;
+  destination^.def:=def;
+  destination^.hv:=hv;
+  destination^.EPrim:=EPrim;
+  destination^.chamberpressure:=chamberPressure;
+  destination^.sampletemperature:=SampleTemperature;
+  destination^.voltage:=voltage;
+  destination^.current:=current;
+  destination^.StartEnergy:=StartEnergy;
+  destination^.ymin:=ymin;
+  destination^.ymax:=ymax;
+  destination^.adsorbate:=adsorbate;
+  destination^.sample:=sample;
+  destination^.co1:=co1;
+  destination^.co2:=co2;
+  destination^.co3:=co3;
+  destination^.io_error:=io_error;
+  destination^.loaded:=loaded;
+  destination^.graphCoord:=graphCoord;
+end;
+{**************************************************************************}
+{**************************************************************************}
+begin
+  spectrum := TSpectrum.create;
+  File_A := TSpectrum.create;
+  File_B := TSpectrum.create;
+end.
